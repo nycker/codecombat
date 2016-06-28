@@ -47,12 +47,17 @@ module.exports = class User extends CocoModel
     super arguments...
 
   @getUnconflictedName: (name, done) ->
+    # deprecate in favor of @checkNameConflicts, which uses Promises and returns the whole response
     $.ajax "/auth/name/#{encodeURIComponent(name)}",
       cache: false
-      success: (data) -> done data.name
-      statusCode: 409: (data) ->
-        response = JSON.parse data.responseText
-        done response.name
+      success: (data) -> done(data.suggestedName)
+        
+  @checkNameConflicts: (name) ->
+    new Promise (resolve, reject) ->
+      $.ajax "/auth/name/#{encodeURIComponent(name)}",
+        cache: false
+        success: resolve
+        error: (jqxhr) -> reject(jqxhr.responseJSON)
 
   getEnabledEmails: ->
     (emailName for emailName, emailDoc of @get('emails', true) when emailDoc.enabled)

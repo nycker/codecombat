@@ -37,23 +37,35 @@ module.exports = class BasicInfoView extends ModalView
     @state = new State {
       suggestedName: null
     }
+    @checkNameUniqueDebounced = _.debounce(_.bind(@checkNameUnique, @), 500)
     @onNameChange = _.debounce(_.bind(@checkNameUnique, @), 500)
     @listenTo @sharedState, 'change:facebookEnabled', -> @renderSelectors('.auth-network-logins')
     @listenTo @sharedState, 'change:gplusEnabled', -> @renderSelectors('.auth-network-logins')
+    
+  afterRender: ->
+    super()
+    if suggestedName = @state.get('suggestedName')
+      @setNameError(suggestedName)
 
   checkNameUnique: ->
-    name = $('input[name="name"]', @$el).val()
+    name = @$('input[name="name"]').val()
     return forms.clearFormAlerts(@$('input[name="name"]').closest('.form-group').parent()) if name is ''
-    @nameUniquePromise = new Promise((resolve, reject) => User.getUnconflictedName name, (newName) =>
-      if name is newName
+    promise = User.checkNameConflicts(name)
+    @lastNameCheck = {
+      promise: promise
+      name: name
+    }
+    promise.then ({ suggestedName, conflicts }) =>
+      return unless @$('input[name="name"]').val() is name
+      @lastResult = result
+      if conflicts
+        @state.set { suggestedName: suggestedName }
+        @setNameError(suggestedName)
+      else
         @state.set { suggestedName: null }
         @clearNameError()
-        resolve true
-      else
-        @state.set { suggestedName: newName }
-        @setNameError(newName)
-        resolve false
-    )
+    .catch (error) ->
+      throw error
 
   clearNameError: ->
     forms.clearFormAlerts(@$('input[name="name"]').closest('.form-group').parent())
@@ -89,7 +101,7 @@ module.exports = class BasicInfoView extends ModalView
   
   onInputName: ->
     @nameUniquePromise = null
-    @onNameChange()
+    @checkNameUniqueDebounced()
     
   onClickUseSuggestedNameLink: (e) ->
     @$('input[name="name"]').val(@state.get('suggestedName'))
@@ -99,33 +111,31 @@ module.exports = class BasicInfoView extends ModalView
     e.preventDefault()
     data = forms.formToObject(e.currentTarget)
     valid = @checkBasicInfo(data)
-    # TODO: This promise logic is super weird and confusing. Rewrite.
-    @checkNameUnique() unless @nameUniquePromise
-    @nameUniquePromise.then ->
-      @nameUniquePromise = null
-    return unless valid
-
-    attrs = forms.formToObject @$el
-    _.defaults attrs, me.pick([
-      'preferredLanguage', 'testGroupNumber', 'dateCreated', 'wizardColor1',
-      'name', 'music', 'volume', 'emails', 'schoolName'
-    ])
-    attrs.emails ?= {}
-    attrs.emails.generalNews ?= {}
-    attrs.emails.generalNews.enabled = (attrs.subscribe[0] is 'on')
-    delete attrs.subscribe
-    
-    error = false
-    
-    if @sharedState.get('birthday')
-      attrs.birthday = @sharedState.get('birthday').toISOString()
-
-    _.assign attrs, @sharedState.get('ssoAttrs') if @sharedState.get('ssoAttrs')
-    res = tv4.validateMultiple attrs, User.schema
+    promise = if data.name is @lastNameCheck?.name then @lastNameCheck.promise else User.checkNameConflicts(data.name)
+    promise.then ({conflicts}) =>
+      return unless valid
   
-    @$('#signup-button').text($.i18n.t('signup.creating')).attr('disabled', true)
-    @newUser = new User(attrs)
-    @createUser()
+      attrs = forms.formToObject @$el
+      _.defaults attrs, me.pick([
+        'preferredLanguage', 'testGroupNumber', 'dateCreated', 'wizardColor1',
+        'name', 'music', 'volume', 'emails', 'schoolName'
+      ])
+      attrs.emails ?= {}
+      attrs.emails.generalNews ?= {}
+      attrs.emails.generalNews.enabled = (attrs.subscribe[0] is 'on')
+      delete attrs.subscribe
+      
+      error = false
+      
+      if @sharedState.get('birthday')
+        attrs.birthday = @sharedState.get('birthday').toISOString()
+  
+      _.assign attrs, @sharedState.get('ssoAttrs') if @sharedState.get('ssoAttrs')
+      res = tv4.validateMultiple attrs, User.schema
+    
+      @$('#signup-button').text($.i18n.t('signup.creating')).attr('disabled', true)
+      @newUser = new User(attrs)
+      @createUser()
 
   createUser: ->
     options = {}

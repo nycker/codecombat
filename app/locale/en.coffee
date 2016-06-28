@@ -274,8 +274,8 @@
     facebook_exists: "You already have an account associated with Facebook!"
     hey_students: "Students, enter the class code from your teacher."
     birthday: "Birthday"
-    
     parent_email_blurb: "We know you can't wait to learn programming &mdash; we're excited too! Your parents will receive an email with further instructions on how to create an account for you. Email {{email_link}} if you have any questions."
+    classroom_not_found: "This class code doesn't exist! Check your spelling or ask your teacher for help."
 
   recover:
     recover_account_title: "Recover Account"
